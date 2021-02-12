@@ -71,7 +71,7 @@ int1:    db      165,1,1,0
 n1:      equ     01000h
 n2:      equ     01004h
 ascii1:  db      '5',0
-ascii2:  db      '17',0
+ascii2:  db      '-17',0
 string1: db      'abide',0
 string2: db      'abade',0
 
@@ -113,9 +113,7 @@ l_fpdiv:   lbr     fpdiv                ; M[RF] = M[RF] / M[RD]
 ; ***** 32-bit Add.    M[R7]=M[R7]+M[R8]     *****
 ; ***** Numbers in memory stored LSB first   *****
 ; ************************************************
-add32:   push     r7                ; save consumed registers
-         push     r8
-         sex      r8                ; point x to second number
+add32:   sex      r8                ; point x to second number
          ldn      r7                ; get lsb
          add                        ; add second lsb of second number
          str      r7                ; store it
@@ -135,8 +133,12 @@ add32:   push     r7                ; save consumed registers
          adc                        ; add msb byte of second number
          str      r7                ; store it
          sex      r2                ; restore stack
-         pop      r8                ; restore consumed registers
-         pop      r7
+         dec      r7                ; restore registers to original values
+         dec      r7
+         dec      r7
+         dec      r8
+         dec      r8
+         dec      r8
          sep      sret              ; return to caller
         
     
@@ -145,9 +147,7 @@ add32:   push     r7                ; save consumed registers
 ; ***** 32-bit subtract.  M[R7]=M[R7]-M[R8]  *****
 ; ***** Numbers in memory stored LSB first   *****
 ; ************************************************
-sub32:   push     r7                ; save consumed registers
-         push     r8
-         sex      r8                ; point x to second number
+sub32:   sex      r8                ; point x to second number
          ldn      r7                ; get lsb
          sm                         ; subtract second lsb of second number
          str      r7                ; store it
@@ -167,8 +167,12 @@ sub32:   push     r7                ; save consumed registers
          smb                        ; subtract msb byte of second number
          str      r7                ; store it
          sex      r2                ; restore stack
-         pop      r8                ; restore consumed registers
-         pop      r7
+         dec      r7                ; restore registers to original values
+         dec      r7
+         dec      r7
+         dec      r8
+         dec      r8
+         dec      r8
          sep      sret              ; return to caller
         
 
@@ -192,6 +196,9 @@ inc32:   ldn      rf                ; get lsb
          ldn      rf                ; get it
          adci     0                 ; propagate carry
          str      rf                ; store msb
+         dec      rf                ; restore rf
+         dec      rf
+         dec      rf
          sep      sret              ; and return
 
 
@@ -215,6 +222,9 @@ dec32:   ldn      rf                ; get lsb
          ldn      rf                ; get it
          smbi     0                 ; propagate borrow
          str      rf                ; store msb
+         dec      rf                ; restore rf
+         dec      rf
+         dec      rf
          sep      sret              ; and return
 
 
@@ -224,9 +234,7 @@ dec32:   ldn      rf                ; get lsb
 ; ***** Returns: D=0 if M[R7]=M[R8]          *****
 ; *****          DF=1 if M[R7]<M[R8]         *****
 ; ************************************************
-cmp32:   push     r7                ; save registers
-         push     r8
-         lda      r8                ; get lsb from second number
+cmp32:   lda      r8                ; get lsb from second number
          str      r2                ; store for subtract
          lda      r7                ; get lsb from first number
          sm                         ; subtract
@@ -247,18 +255,20 @@ cmp32:   push     r7                ; save registers
          glo      re                ; get zero test
          or                         ; or last result
          plo      re                ; and put back
-         lda      r8                ; get msb of second number
+         ldn      r8                ; get msb of second number
          str      r2                ; store for subtract
-         lda      r7                ; get msb of first number
+         ldn      r7                ; get msb of first number
          smb                        ; perform subtraction
          str      r2                ; store for combining with zero test
          shl                        ; shift sign bit into df
          glo      re                ; get zero test
          or                         ; or last result
-         plo      re                ; save for a moment
-         pop      r8                ; recover consumed registers
-         pop      r7
-         glo      re                ; get zero test
+         dec      r7                ; restore registers
+         dec      r7
+         dec      r7
+         dec      r8
+         dec      r8
+         dec      r8
          sep      sret              ; return to caller
 
 ; ************************************************
@@ -267,9 +277,7 @@ cmp32:   push     r7                ; save registers
 ; ***** Returns: D=0 if M[R7]=M[R8]          *****
 ; *****          DF=1 if M[R8]<M[R7]         *****
 ; ************************************************
-icmp32:  push     r7                ; save registers
-         push     r8
-         lda      r8                ; get lsb from second number
+icmp32:  lda      r8                ; get lsb from second number
          str      r2                ; store for subtract
          lda      r7                ; get lsb from first number
          sd                         ; subtract
@@ -290,18 +298,20 @@ icmp32:  push     r7                ; save registers
          glo      re                ; get zero test
          or                         ; or last result
          plo      re                ; and put back
-         lda      r8                ; get msb of second number
+         ldn      r8                ; get msb of second number
          str      r2                ; store for subtract
-         lda      r7                ; get msb of first number
+         ldn      r7                ; get msb of first number
          sdb                        ; perform subtraction
          str      r2                ; store for combining with zero test
          shl                        ; shift sign bit into df
          glo      re                ; get zero test
          or                         ; or last result
-         plo      re                ; save for a moment
-         pop      r8                ; recover consumed registers
-         pop      r7
-         glo      re                ; get zero test
+         dec      r7                ; restore registers
+         dec      r7
+         dec      r7
+         dec      r8
+         dec      r8
+         dec      r8
          sep      sret              ; return to caller
 
 
@@ -309,7 +319,8 @@ icmp32:  push     r7                ; save registers
 ; ***** is zero check               *****
 ; ***** returnss: DF=1 if M[RF]=0   *****
 ; ***************************************
-iszero:  lda      rf                ; get lsb
+iszero:  push     rf                ; save position
+         lda      rf                ; get lsb
          lbnz     notzero           ; jump if not zero
          lda      rf                ; get second number
          lbnz     notzero           ; jumpt if not zero
@@ -322,6 +333,7 @@ iszero:  lda      rf                ; get lsb
          sep      sret              ; and return
 notzero: ldi      0                 ; number was not zero
          shr                        ; shift into df
+         pop      rf                ; recover position
          sep      sret              ; and return
 
         
@@ -336,8 +348,10 @@ null32:  ldi      0                 ; need to zero
          str      rf                ; store to third byte
          inc      rf                ; point to msb
          str      rf                ; store to msb
+         dec      rf                ; restore rf
+         dec      rf
+         dec      rf
          sep      sret              ; return to caller
-
     
 ; *************************************************
 ; ***** Check if M[RF] is negative            *****
@@ -348,6 +362,9 @@ isneg:   inc      rf                ; point to msb
          inc      rf
          ldn      rf                ; retrieve msb
          shl                        ; shift sign bit into df
+         dec      rf                ; restore rf
+         dec      rf
+         dec      rf
          sep      sret              ; and return
 
 
@@ -373,6 +390,9 @@ comp2s:  ldn      rf                ; get lsb
          xri      0ffh              ; invert it
          adci     0                 ; propagate carry
          str      rf                ; and put back
+         dec      rf                ; restore rf
+         dec      rf
+         dec      rf
          sep      sret              ; return
 
 
@@ -395,6 +415,9 @@ shl32:   ldn      rf                ; get lsb
          ldn      rf                ; get it
          shlc                       ; shift it
          str      rf
+         dec      rf                ; restore rf
+         dec      rf
+         dec      rf
          sep      sret              ; and return
 
     
@@ -432,7 +455,11 @@ shr32:   inc      rf                ; point to msb
 ; *****    R9 - points to first number       *****
 ; *****    R8 - points to second number      *****
 ; ************************************************
-mul32:   ldi      0                 ; need to zero answer
+mul32:   push     r7                ; save consumed registers
+         push     r8
+         push     r9
+         push     rf
+         ldi      0                 ; need to zero answer
          stxd
          stxd
          stxd
@@ -456,6 +483,10 @@ scmul2:  mov      rf,r8             ; need second number
          inc      r9                ; point to msb
          ldn      r2                ; get number from stack
          str      r9                ; store into destination
+         pop      rf                ; recover consumed registers
+         pop      r9
+         pop      r8
+         pop      r7
          sep      sret              ; return to caller
 scmul4:  ldn      r8                ; get lsb of second number
          shr                        ; shift low bit into df
@@ -486,7 +517,12 @@ scmulno: mov      rf,r9             ; point to first number
 ; *****    RA=result                         *****
 ; *****    RB=shift                          *****
 ; ************************************************
-div32:   ldi      0                 ; set sign flag as positive
+div32:   push     r7                ; save consumed registers
+         push     r8
+         push     ra
+         push     rb
+         push     rf
+         ldi      0                 ; set sign flag as positive
          str      r2                ; place on the stack
          inc      r7                ; point to msb of first number
          inc      r7
@@ -605,7 +641,12 @@ scdivd5: lda      ra                ; get result byte
          mov      rf,r7             ; otherwise negate number
          sep      scall
          dw       comp2s
-scdivrt: sep      sret              ; return to caller
+scdivrt: pop      rf                ; recover consumed registers
+         pop      rb
+         pop      ra
+         pop      r8
+         pop      r7
+         sep      sret              ; return to caller
 
 ; *****************************************
 ; ***** Convert R7:R8 to bcd in M[RF] *****
@@ -683,6 +724,7 @@ tobcdlp4:  lda     rf           ; get current cell
 ; ***** RD - destination buffer                 *****
 ; ***************************************************
 itoa:      push    rf           ; save consumed registers
+           push    r9
            push    r8
            push    r7
            lda     rf           ; retrieve number into R7:R8
@@ -734,6 +776,7 @@ itoa3:     dec     r8
            str     rd
            pop     r7
            pop     r8           ; recover consumed registers
+           pop     r9
            pop     rf
            sep     sret         ; return to caller
 itoaz:     ghi     r8           ; see if leading have been used up
@@ -762,59 +805,108 @@ itoan:     ldi     '-'          ; show negative
            phi     r7
            lbr     itoa1        ; now convert/show number
 
-; **********************************
-; ***** Convert ascii to int32 *****
-; ***** RF - buffer to ascii   *****
-; ***** RD - destinatin int32  *****
-; ***** Returns R7:R8 result   *****
-; ***** Uses: RA - digits msb  *****
-; *****       R9 - counters    *****
-; **********************************
-atoi:      ldi     0            ; signal positive number
-           str     r2           ; store on stack
-           ldn     rf           ; get first byte
-           smi     '-'          ; check for negative sign
-           lbnz    atoip        ; jump if positive number
-           ldi     1            ; indicate negative number
-           str     r2           ; store onto stack
-           inc     rf           ; move past negative sign
-atoip:     dec     r2           ; preserve sign flag
-           mov     r7,r2        ; keep the last position for moment
-           ldi     10           ; need 10 work bytes on the stack
-           plo     re
-atoi1:     ldi     0            ; put a zero on the stack
-           stxd
-           dec     re           ; decrement count
-           glo     re           ; see if done
-           lbnz    atoi1        ; loop until done
-           ldi     0            ; need to get count of characters
-           plo     re
-atoi2:     ldn     rf           ; get character from RF
-           smi     '0'          ; see if below digits
-           lbnf    atoi3        ; jump if not valid digit
-           ldn     rf           ; recover byte
-           smi     '9'+1        ; check if above digits
-           lbdf    atoi3        ; jump if not valid digit
-           inc     rf           ; point to next character
-           inc     re           ; increment count
-           lbr     atoi2        ; loop until non character found
-atoi3:     glo     re           ; were any valid digits found
-           lbnz    atoi4        ; jump if so
-           ldi     0            ; otherwise result is zero
-           plo     r7
+; ****************************************************
+; ***** Convert ascii to int32                   *****
+; ***** RF - buffer to ascii                     *****
+; ***** RD - destinatin int32                    *****
+; ***** Returns R7:R8 result                     *****
+; *****         RF - First non-numeric character *****
+; ****************************************************
+atoi:      push    ra           ; save consumed registers
+           push    rb
+           ldi     0            ; zero result
            phi     r7
-           plo     r8
+           plo     r7
            phi     r8
-atoidn:    glo     r2           ; clear work bytes off stack
-           adi     10
-           plo     r2
-           ghi     r2
+           plo     r8
+           stxd                 ; store sign on stack
+           ldn     rf           ; get byte from input
+           smi     '-'          ; check for negative number
+           lbnz    atoi_lp      ; jump if not a negative number
+           ldi     1            ; replace sign
+           irx
+           stxd
+           inc     rf           ; move past sign
+atoi_lp:   ldn     rf           ; get byte from input
+           smi     '0'          ; see if below digits
+           lbnf    atoi_dn      ; jump if not valid digit
+           smi     9            ; check for high of range
+           lbdf    atoi_dn      ; jump if not valid digit
+           glo     r8           ; multiply answer by 2
+           shl
+           plo     r8
+           plo     rb           ; put a copy in RA:RB as well
+           ghi     r8
+           shlc
+           phi     r8
+           phi     rb
+           glo     r7
+           shlc
+           plo     r7
+           plo     ra
+           ghi     r7
+           shlc
+           phi     r7
+           phi     ra
+           ldi     2            ; want to shift RA:RB twice
+           plo     re
+atoi_1:    glo     rb           ; now shift RA:RB
+           shl
+           plo     rb
+           ghi     rb
+           shlc
+           phi     rb
+           glo     ra
+           shlc
+           plo     ra
+           ghi     ra
+           shlc
+           phi     ra
+           dec     re           ; decrement shift count
+           glo     re           ; see if done
+           lbnz    atoi_1       ; shift again if not
+           glo     rb           ; now add RA:RB to R7:R8
+           str     r2
+           glo     r8
+           add
+           plo     r8
+           ghi     rb
+           str     r2
+           ghi     r8
+           adc
+           phi     r8
+           glo     ra
+           str     r2
+           glo     r7
+           adc
+           plo     r7
+           ghi     ra
+           str     r2
+           ghi     ra
+           str     r2
+           ghi     r7
+           adc
+           phi     r7
+           lda     rf           ; get byte from input
+           smi     '0'          ; conver to binary
+           str     r2           ; and add it to R7:R8
+           glo     r8
+           add
+           plo     r8
+           ghi     r8
            adci    0
-           phi     r2
-           irx                  ; now point to sign flag
-           ldx                  ; and retrieve it
-           shr                  ; shift into df
-           lbnf    atoidn2      ; jump if positive number
+           phi     r8
+           glo     r7
+           adci    0
+           plo     r7
+           ghi     r7
+           adci    0
+           phi     r7
+           lbr     atoi_lp      ; loop back for more characters
+atoi_dn:   irx                  ; recover sign
+           ldx
+           shr                  ; shift into DF
+           lbnf    atoi_dn2     ; jump if not negative
            glo     r8           ; negate the number
            xri     0ffh
            adi     1
@@ -831,7 +923,7 @@ atoidn:    glo     r2           ; clear work bytes off stack
            xri     0ffh
            adci    0
            phi     r7
-atoidn2:   glo     r8           ; write answer to destination
+atoi_dn2:  glo     r8           ; store result into destination
            str     rd
            inc     rd
            ghi     r8
@@ -842,68 +934,12 @@ atoidn2:   glo     r8           ; write answer to destination
            inc     rd
            ghi     r7
            str     rd
+           dec     rd           ; restore RD
+           dec     rd
+           dec     rd
+           pop     rb           ; recover consumed registers
+           pop     ra
            sep     sret         ; and return to caller
-atoi4:     dec     rf           ; move back to last valid character
-           ldn     rf           ; get digit
-           smi     030h         ; convert to binary
-           str     r7           ; store into work space
-           dec     r7
-           dec     re           ; decrement count
-           glo     re           ; see if done
-           lbnz    atoi4        ; loop until all digits copied
-           ldi     0            ; need to clear result
-           plo     r7
-           phi     r7
-           plo     r8
-           phi     r8
-           ldi     32           ; 32 bits to process
-           plo     r9
-atoi5:     ldi     10           ; need to shift 10 cells
-           plo     re
-           mov     ra,r2        ; point to msb
-           inc     ra
-           ldi     0            ; clear carry bit
-           shr
-atoi6:     ldn     ra           ; get next cell
-           lbnf    atoi6a       ; Jump if no need to set a bit
-           ori     16           ; set the incoming bit
-atoi6a:    shr                  ; shift cell right
-           str     ra           ; store new cell value
-           inc     ra           ; move to next cell
-           dec     re           ; decrement cell count
-           glo     re           ; see if done
-           lbnz    atoi6        ; loop until all cells shifted
-           ghi     r7           ; shift remaining bit into answer
-           shrc
-           phi     r7
-           glo     r7
-           shrc
-           plo     r7
-           ghi     r8
-           shrc
-           phi     r8
-           glo     r8
-           shrc
-           plo     r8
-           ldi     10           ; need to check 10 cells
-           plo     re
-           mov     ra,r2        ; point ra to msb
-           inc     ra
-atoi7:     ldn     ra           ; get cell value
-           ani     8            ; see if bit 3 is set
-           lbz     atoi7a       ; jump if not
-           ldn     ra           ; recover value
-           smi     3            ; minus 3
-           str     ra           ; put it back
-atoi7a:    inc     ra           ; point to next cell
-           dec     re           ; decrement cell count
-           glo     re           ; see if done
-           lbnz    atoi7        ; loop back if not
-           dec     r9           ; decrement bit count
-           glo     r9           ; see if done
-           lbnz    atoi5        ; loop back if more bits
-           lbr     atoidn       ; otherwise done
-           
 
 ; **************************
 ; ***** String library *****
@@ -914,10 +950,14 @@ atoi7a:    inc     ra           ; point to next cell
 ; ***** RD - destination string *****
 ; ***** RF - source string      *****
 ; ***********************************
-strcpy:    lda     rf           ; get byte from source string
+strcpy:    push    rd           ; save consumed registers
+           push    rf
+strcpy_1:  lda     rf           ; get byte from source string
            str     rd           ; store into destination
            inc     rd
-           lbnz    strcpy       ; loop back until terminator copied
+           lbnz    strcpy_1     ; loop back until terminator copied
+           pop     rf           ; recover consumed registers
+           pop     rd
            sep     sret         ; return to caller
            
 ; ***********************************
@@ -925,24 +965,28 @@ strcpy:    lda     rf           ; get byte from source string
 ; ***** RD - destination string *****
 ; ***** RF - source string      *****
 ; ***********************************
-strcat:    lda     rd           ; look for terminator
-           lbnz    strcat       ; loop back until terminator found
+strcat:    push    rd           ; save consumed registers
+           push    rf
+strcat_1:  lda     rd           ; look for terminator
+           lbnz    strcat_1     ; loop back until terminator found
            dec     rd           ; move back to terminator
-           lbr     strcpy       ; and then copy source string to end
+           lbr     strcpy_1     ; and then copy source string to end
 
 ; **********************************
 ; ***** String length          *****
 ; ***** RF - pointer to string *****
 ; ***** Returns: RC - length   *****
 ; **********************************
-strlen:    ldi     0            ; set count to zero
+strlen:    push    rf           ; save consumed register
+           ldi     0            ; set count to zero
            plo     rc
            phi     rc
 strlen_1:  lda     rf           ; get byte from string
            lbz     strlen_2     ; jump if terminator found
            inc     rc           ; otherwise increment count
            lbr     strlen_1     ; and keep looking
-strlen_2:  sep     sret         ; return to caller
+strlen_2:  pop     rf           ; recover consumed register
+           sep     sret         ; return to caller
 
 ; *****************************************
 ; ***** Left portion of string        *****
@@ -950,7 +994,10 @@ strlen_2:  sep     sret         ; return to caller
 ; ***** RD - pointer to destination   *****
 ; ***** RC - Count of characters      *****
 ; *****************************************
-left:      glo     rc           ; see if characters left
+left:      push    rf           ; save consumed registers
+           push    rd
+           push    rc
+left_1:    glo     rc           ; see if characters left
            str     r2
            ghi     rc
            or
@@ -959,12 +1006,14 @@ left:      glo     rc           ; see if characters left
            lda     rf           ; get byte from source
            str     rd           ; write into destination
            inc     rd
-           lbnz    left         ; jump if terminator not found
+           lbnz    left_1       ; jump if terminator not found
+left_rt:   pop     rc           ; recover consumed registers
+           pop     rd
+           pop     rf
            sep     sret         ; otherwise return to caller
 left_dn:   ldi     0            ; write terminator to destination
            str     rd
-           sep     sret         ; and return
-           end     start
+           lbr     left_rt      ; then return
 
 ; *****************************************
 ; ***** Middle portion of string      *****
@@ -973,17 +1022,33 @@ left_dn:   ldi     0            ; write terminator to destination
 ; ***** RB - Starting point           *****
 ; ***** RC - Count of characters      *****
 ; *****************************************
-mid:       glo     rb           ; see if starting position found
+mid:       push    rb           ; save consumed register
+mid_1:     glo     rb           ; see if starting position found
            str     r2
            ghi     rc
            or
-           lbz     left         ; use left to copy characters
+           lbz     mid_2        ; use left to copy characters
            dec     rb           ; decrement count
            lda     rf           ; get byte from source string
-           lbz     left_dn      ; jump if terminator found, will be empty destination
-           lbr     mid          ; keep looping until start point 
+           lbz     mid_dn       ; jump if terminator found, will be empty destination
+           lbr     mid_1        ; keep looping until start point 
+mid_dn:    ldi     0            ; write terminator to destination
+           str     rd
+           pop     rb           ; recover consumed register
+           sep     sret         ; and return
+mid_2:     sep     scall        ; call left to copy characters
+           dw      left
+           pop     rb           ; pop consumed register
+           sep     sret         ; and return to caller
 
-right:     ldi     0            ; zero counter
+; *****************************************
+; ***** Right portion of string       *****
+; ***** RF - pointer to source string *****
+; ***** RD - pointer to destination   *****
+; ***** RC - Count of characters      *****
+; *****************************************
+right:     push    rc           ; save consumed register
+           ldi     0            ; zero counter
            plo     rb
            phi     rb
 right_1:   lda     rf           ; get byte from source
@@ -995,21 +1060,26 @@ right_2:   dec     rf           ; point back to previous character
            str     r2
            ghi     rb
            or
-           lbz     strcpy       ; start found, so now just copy
+           lbz     right_dn     ; start found, so now just copy
            glo     rc           ; check rc counter
            str     r2
            ghi     rc
            or
-           lbz     strcpy       ; start found, so now just copy
+           lbz     right_dn     ; start found, so now just copy
            dec     rb           ; decrement counters
            dec     rc
            lbr     right_2      ; keep looking for start point
+right_dn:  sep     scall        ; call strcpy to copy the string
+           dw      strcpy
+           pop     rc           ; recover consumed register
+           sep     sret         ; and return
 
 ; ***************************************
 ; ***** Convert string to lowercase *****
 ; ***** RF - Pointer to string      *****
 ; ***************************************
-lower:     ldn     rf           ; get byte from buffer
+lower:     push    rf           ; save consumed register
+lower_1:   ldn     rf           ; get byte from buffer
            lbz     return       ; jump if terminator found
            smi     'A'          ; Check for lower range
            lbnf    lowernxt     ; jump if below range
@@ -1019,14 +1089,16 @@ lower:     ldn     rf           ; get byte from buffer
            adi     32           ; convert to lowercvase
            str     rf           ; and put it back
 lowernxt:  inc     rf           ; point to next character
-           lbr     lower        ; process rest of string
-return:    sep     sret         ; return to caller
+           lbr     lower_1      ; process rest of string
+return:    pop     rf           ; recover consumed register
+           sep     sret         ; return to caller
 
 ; ***************************************
 ; ***** Convert string to uppercase *****
 ; ***** RF - Pointer to string      *****
 ; ***************************************
-upper:     ldn     rf           ; get byte from buffer
+upper:     push    rf           ; save consumed register
+upper_1:   ldn     rf           ; get byte from buffer
            lbz     return       ; jump if terminator found
            smi     'a'          ; Check for lower range
            lbnf    uppernxt     ; jump if below range
@@ -1036,7 +1108,7 @@ upper:     ldn     rf           ; get byte from buffer
            smi     32           ; convert to lowercvase
            str     rf           ; and put it back
 uppernxt:  inc     rf           ; point to next character
-           lbr     upper        ; process rest of string
+           lbr     upper_1      ; process rest of string
 
 ; *********************************************
 ; ***** String compare                    *****
@@ -1047,7 +1119,9 @@ uppernxt:  inc     rf           ; point to next character
 ; *****          D=1  - string1 > string2 *****
 ; *****          D=0  - string1 < string2 *****
 ; *********************************************
-strcmp:    lda     rf           ; get byte from string1
+strcmp:    push    rd           ; save consumed registers
+           push    rf
+strcmp_2:  lda     rf           ; get byte from string1
            str     r2
            lbnz    strcmp_1     ; jump if terminator not found
            lda     rd           ; get byte from second string
@@ -1056,16 +1130,18 @@ strcmp:    lda     rf           ; get byte from string1
 strcmp_1:  lda     rd           ; get byte from second string
            lbz     strcmp_gt    ; jump if string2 is lower
            sd                   ; subtract from first string
-           lbz     strcmp       ; loop to check remaining bytes
+           lbz     strcmp_2     ; loop to check remaining bytes
            lbdf    strcmp_gt    ; jump if 
 strcmp_lt: ldi     0            ; signal string 1 is lower
-           shr                  ; mark as not equal
-           sep     sret         ; and return
+           lbr     strcmp_rt
 strcmp_eq: ldi     1            ; signal strings equal
-           shr
-           sep     sret         ; and return
+           lbr     strcmp_rt
 strcmp_gt: ldi     2            ; signal string 2 is lower
-           shr
+strcmp_rt: shr
+           plo     re           ; preserve result
+           pop     rf           ; recover consumed registers
+           pop     rd
+           glo     re           ; recover result
            sep     sret
 
 
@@ -1855,4 +1931,53 @@ fpdiv_2a: dec      rb
           glo      re           ; see if done
           lbnz     fpdiv_2a     ; loop back if not
           lbr      fpdiv_lp     ; loop for rest of division
+
+; ***** Uses:
+; *****       R9.0  - exponent
+; *****       R9.1  - sign
+; *****       RC:RD - mask
+; *****************************
+atof:     ldi      0            ; set sign to positive
+          phi      r9
+          ldn      rf           ; get first byte from buffer
+          smi      '-'          ; is it minus
+          lbnz     atof_1       ; jump if not
+          ldi      1            ; indicate negative number
+          phi      r9
+          inc      rf           ; and move past minus
+atof_1:   push     rf           ; save buffer position
+          push     rd           ; save destination
+          sep      scall        ; convert integer portion of number
+          dw       itoa
+          pop      rd           ; recover destination
+          pop      rf           ; and buffer position
+          push     rd           ; save destination for later
+          lda      rd           ; retrieve integer number
+          plo      r8 
+          str      r2           ; store for zero check
+          lda      rd
+          phi      r8
+          or                    ; combine with zero check
+          str      r2
+          lda      rd
+          plo      r7
+          or                    ; combine with zero check
+          str      r2
+          lda      rd
+          phi      r7
+          or                    ; combine with zero check
+          lbz      atof_z       ; jump if integer is zero
+
+
+atof_z:   ldi      080h         ; set initial mask
+          plo      rc
+          ldi      0
+          phi      rc
+          phi      rd
+          plo      rd
+          ldi      127          ; initial exponent
+          plo      r9
+
+
+
 
