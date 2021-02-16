@@ -2,6 +2,9 @@
 ; ***** Beginning of test code, will be removed in final library *****
 ; ********************************************************************
 include  bios.inc
+
+#ifdef TEST
+
 arg1:    equ     01000h
 arg2:    equ     01004h
 tmp:     equ     01008h
@@ -86,6 +89,7 @@ fp1:     db      '12.34e-5',0
 ; *****                         End of test code                      *****
 ; *************************************************************************
 
+#endif
            org     0c000h
            db      'SL',0,0,1
 l_add32:   lbr     add32                ; M[R7] = M[R7] + M[R8]
@@ -115,7 +119,7 @@ l_fpmul:   lbr     fpmul                ; M[RF] = M[RF] * M[RD]
 l_fpadd:   lbr     fpadd                ; M[RF] = M[RF] + M[RD]
 l_fpsub:   lbr     fpsub                ; M[RF] = M[RF] - M[RD]
 l_fpdiv:   lbr     fpdiv                ; M[RF] = M[RF] / M[RD]
-l_atof:    lbr     atof
+l_atof:    lbr     atof                 ; M[RD] = atof(M[RF])
 
 ; ************************************************
 ; ***** 32-bit Add.    M[R7]=M[R7]+M[R8]     *****
