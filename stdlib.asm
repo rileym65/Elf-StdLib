@@ -3,6 +3,9 @@
 ; ********************************************************************
 include  bios.inc
 
+#define BASE     0c000h
+#define TEST
+
 #ifdef TEST
 
 arg1:    equ     01000h
@@ -22,6 +25,32 @@ start:   sep     scall             ; now call the autobaud
          mov     rd,arg1
          sep     scall
          dw      l_atof
+
+         mov     rf,arg1
+         mov     rd,arg2
+         sep     scall
+         dw      l_ftoi
+
+         mov     rf,arg2
+         mov     rd,buffer
+         sep     scall
+         dw      l_itoa
+
+         mov     rf,buffer
+         sep     scall
+         dw      f_msg
+         lbr     stop
+
+         mov     rf,arg1
+         mov     rd,buffer
+         sep     scall
+         dw      l_ftoa
+         mov     rf,buffer
+         sep     scall
+         dw      f_msg
+         lbr     stop
+
+
          lbr     show
 
 
@@ -83,14 +112,14 @@ ascii1:  db      '5',0
 ascii2:  db      '-17',0
 string1: db      'abide',0
 string2: db      'abade',0
-fp1:     db      '12.34e-5',0
+fp1:     db      '12.34e-3',0
 
 ; *************************************************************************
 ; *****                         End of test code                      *****
 ; *************************************************************************
 
 #endif
-           org     0c000h
+           org     BASE
            db      'SL',0,0,1
 l_add32:   lbr     add32                ; M[R7] = M[R7] + M[R8]
 l_sub32:   lbr     sub32                ; M[R7] = M[R7] - M[R8]
@@ -120,7 +149,19 @@ l_fpadd:   lbr     fpadd                ; M[RF] = M[RF] + M[RD]
 l_fpsub:   lbr     fpsub                ; M[RF] = M[RF] - M[RD]
 l_fpdiv:   lbr     fpdiv                ; M[RF] = M[RF] / M[RD]
 l_atof:    lbr     atof                 ; M[RD] = atof(M[RF])
+l_ftoa:    lbr     ftoa                 ; M[RD] = ftoa(M[RF])
+l_ftoi:    lbr     ftoi                 ; M[RD] = ftoi(M[RF])
 
+           org     BASE+0c0h
+fpdot1:    db      0cdh, 0cch, 0cch, 03dh
+fp_0:      db      00,00,00,00
+fp_1:      db      00,00,080h,03fh
+fp_2:      db      00,00,000h,040h
+fp_10:     db      00,00,020h,041h
+fp_100:    db      00,00,0c8h,042h
+fp_1000:   db      00,00,07ah,044h
+fp_e:      db      054h, 0f8h, 02dh, 040h
+fp_pi:     db      0dbh, 00fh, 049h, 040h
 ; ************************************************
 ; ***** 32-bit Add.    M[R7]=M[R7]+M[R8]     *****
 ; ***** Numbers in memory stored LSB first   *****
@@ -1161,7 +1202,6 @@ strcmp_rt: shr
 ; ***** Floating point library *****
 ; **********************************
 
-fp10:      db      00,00,020h,041h
 
 ; ******************************************
 ; ***** 2's compliment number in r7:r8 *****
@@ -2234,7 +2274,7 @@ atof_ex4: glo      rc           ; see if done
           lbz      atof_exd     ; jump if done
           mov      rf,r2        ; point to result
           inc      rf
-          mov      rd,fp10      ; point to 10.0
+          mov      rd,fp_10     ; point to 10.0
           glo      rc           ; save count
           stxd
           sep      scall        ; multiply result by 10.0
@@ -2248,7 +2288,7 @@ atof_exn: glo      rc           ; see if done
           lbz      atof_exd     ; jump if done
           mov      rf,r2        ; point to result
           inc      rf
-          mov      rd,fp10      ; point to 10.0
+          mov      rd,fp_10     ; point to 10.0
           glo      rc           ; save count
           stxd
           sep      scall        ; divide result by 10.0
@@ -2268,4 +2308,507 @@ atof_exd: irx                   ; recover answer
           ldx
           phi      r7
           lbr      atof_dn      ; and return result
+
+; *************************************************
+; ***** Convert floating point to ASCII       *****
+; ***** RF - pointer to floating point number *****
+; ***** RD - destination buffer               *****
+; ***** Uses:                                 *****
+; *****       R9.0  - exponent                *****
+; *****       R9.1  - E                       *****
+; *****       R7:R8 - number                  *****
+; *****       RA:RB - fractional              *****
+; *****       RC.0  - digit count             *****
+; *************************************************
+ftoa:     lda      rf           ; retrieve number into R7:R8
+          plo      r8
+          lda      rf
+          phi      r8
+          lda      rf
+          plo      r7
+          lda      rf
+          phi      r7
+          shl                   ; shift sign into DF
+          lbnf     ftoa_1       ; jump if number is positive
+          ldi      '-'          ; place minus sign into output
+          str      rd
+          inc      rd
+ftoa_1:   glo      r7           ; get low bit of exponent
+          shl                   ; shift into DF
+          ghi      r7           ; get high 7 bits of exponent
+          shlc                  ; shift in the low bit
+          plo      r9           ; store it
+          lbnz     ftoa_2       ; jump if exponent is not zero
+          ldi      '0'          ; write 0 digit to output
+          str      rd
+          inc      rd
+ftoa_t:   ldi      0            ; terminate output
+          str      rf
+          sep      sret         ; and return to caller
+ftoa_2:   smi      0ffh         ; check for infinity
+          lbnz     ftoa_3       ; jump if not
+          ldi      'i'          ; write inf to output
+          str      rd
+          inc      rd
+          ldi      'n'
+          str      rd
+          inc      rd
+          ldi      'f'
+          str      rd
+          inc      rd
+          lbr      ftoa_t       ; terminate string and return
+ftoa_3:   push     rd           ; save destination pointer
+          ldi      0            ; clear E
+          phi      r9
+          glo      r9           ; check exponent for greater than 150
+          smi      151
+          lbnf     ftoa_4       ; jump if <= 150
+          ghi      r7           ; put number on the stack
+          stxd
+          glo      r7
+          stxd
+          ghi      r8
+          stxd
+          glo      r8
+          stxd
+ftoa_3a:  glo      r9           ; get exponent
+          smi      131          ; looking for below 131
+          lbnf     ftoa_3z      ; jump if done scaling
+          mov      rf,r2        ; point to number
+          inc      rf
+          ghi      r9           ; get E
+          stxd                  ; and save on stack
+          mov      rd,fp_10     ; need to divide by 10
+          sep      scall        ; perform the division
+          dw       fpdiv
+          irx                   ; recover E
+          ldx
+          adi      1            ; increment E
+          phi      r9           ; and put it back
+          glo      r2           ; point to new exponent
+          adi      3
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          lda      rf           ; get low bit
+          shl                   ; shift into DF
+          ldn      rf           ; get high 7 bites
+          shlc                  ; shift in the low bit
+          plo      r9           ; and store it
+          lbr      ftoa_3a      ; loop until exponent in correct range
+ftoa_3z:  irx                   ; retrieve the number from the stack
+          ldxa
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldx
+          phi      r7
+ftoa_4:   glo      r9           ; check exponent for less than 114
+          smi      114
+          lbdf     ftoa_5       ; jump if > 114
+          ghi      r7           ; put number on the stack
+          stxd
+          glo      r7
+          stxd
+          ghi      r8
+          stxd
+          glo      r8
+          stxd
+ftoa_4a:  glo      r9           ; get exponent
+          smi      127          ; looking for below 127
+          lbdf     ftoa_4z      ; jump if done scaling
+          mov      rf,r2        ; point to number
+          inc      rf
+          ghi      r9           ; get E
+          stxd                  ; and save on stack
+          mov      rd,fp_10     ; need to divide by 10
+          sep      scall        ; perform the division
+          dw       fpmul
+          irx                   ; recover E
+          ldx
+          smi      1            ; decrement E
+          phi      r9           ; and put it back
+          glo      r2           ; point to new exponent
+          adi      3
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          lda      rf           ; get low bit
+          shl                   ; shift into DF
+          ldn      rf           ; get high 7 bites
+          shlc                  ; shift in the low bit
+          plo      r9           ; and store it
+          lbr      ftoa_4a      ; loop until exponent in correct range
+ftoa_4z:  irx                   ; retrieve the number from the stack
+          ldxa
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldx
+          phi      r7
+ftoa_5:   ldi      0            ; clear high byte of number
+          phi      r7
+          glo      r7           ; set implied 1
+          ori      080h
+          plo      r7           ; and put it back
+          ldi      0            ; clear fractional
+          phi      ra
+          plo      ra
+          phi      rb
+          plo      rb
+ftoa_6:   glo      r9           ; get exponent
+          smi      150          ; check for less than 150
+          lbdf     ftoa_7       ; jump if not
+          glo      ra           ; shift fractional right
+          shr
+          plo      ra
+          ghi      rb
+          shrc
+          phi      rb
+          glo      rb
+          shrc
+          plo      rb
+          glo      r8           ; get low bit of number
+          shr                   ; shift it into DF
+          lbnf     ftoa_6a      ; jump if bit was clear
+          glo      ra           ; otherwise set high bit in fractional
+          ori      080h
+          plo      ra           ; put it back
+ftoa_6a:  glo      r7           ; shift number right
+          shr
+          plo      r7
+          ghi      r8
+          shrc
+          phi      r8
+          glo      r8
+          shrc
+          plo      r8
+          glo      r9           ; get exponent
+          adi      1            ; increase it
+          plo      r9           ; put it back
+          lbr      ftoa_6       ; loop back until exponent >= 150
+ftoa_7:   glo      r9           ; get exponent
+          smi      151          ; check for greater than 150
+          lbnf     ftoa_8       ; jump if not
+          glo      r8           ; shift number left
+          shl
+          plo      r8
+          ghi      r8
+          shlc
+          phi      r8
+          glo      r7
+          shlc
+          plo      r7
+          ghi      r7
+          shlc
+          phi      r7
+          glo      r9           ; get exponent
+          adi      1            ; increment it
+          plo      r9           ; and put it back
+          lbr      ftoa_7       ; loop until exponent in range
+ftoa_8:   pop      rd           ; recover destination
+          ghi      r7           ; place integer portion on stack
+          stxd
+          glo      r7
+          stxd
+          ghi      r8
+          stxd
+          glo      r8
+          stxd
+          mov      rf,r2        ; point source to integer number
+          inc      rf
+          push     ra           ; save registers consumed by itoa
+          push     rb
+          push     r9
+          sep      scall        ; call ito a to convert integer portion of result
+          dw       itoa
+          pop      r9           ; recover consumed registers
+          pop      rb
+          pop      ra
+          irx                   ; remove number from stack
+          irx
+          irx
+          glo      ra           ; check for nonzero fractional
+          lbnz     ftoa_9       ; jump if not zero
+          ghi      rb
+          lbnz     ftoa_9
+          glo      rb
+          lbnz     ftoa_9
+          lbr      ftoa_e       ; no fractional digits, jump to E processing
+ftoa_9:   dec      rd           ; get 2 characters back
+          dec      rd
+          lda      rd           ; get it
+          smi      '1'          ; see if it was 1
+          lbnz     ftoa_9c      ; jump if not
+          ldn      rd           ; get 2nd number
+          plo      re           ; save it
+          ldi      '.'          ; replace it with a dot
+          str      rd
+          inc      rd
+          glo      re           ; recover number
+          str      rd           ; and store into destination
+          inc      rd
+          ghi      r9           ; get E
+          adi      1            ; increment it
+          phi      r9           ; and put it back
+          lbr      ftoa_9d      ; then continue
+ftoa_9c:  inc      rd           ; put RD back to original position
+          ldi      '.'          ; need decimal point
+          str      rd           ; store into destination
+          inc      rd
+ftoa_9d:  ldi      6            ; set digit count
+          plo      rc
+ftoa_9a:  glo      ra           ; check if fractional is still non-zero
+          lbnz     ftoa_9b      ; jump if not
+          ghi      rb
+          lbnz     ftoa_9b
+          glo      rb
+          lbz      ftoa_e       ; on to E processing if no more fractional bits
+ftoa_9b:  glo      rb           ; multiply fractional by 2
+          shl
+          plo      rb
+          plo      r8           ; put copy in R7:R8 as well
+          ghi      rb
+          shlc
+          phi      rb
+          phi      r8
+          glo      ra
+          shlc
+          plo      ra
+          plo      r7
+          ghi      ra
+          shlc
+          phi      ra
+          phi      r7
+          glo      r8           ; now multiply R7:R8 by 2
+          shl
+          plo      r8
+          ghi      r8
+          shlc
+          phi      r8
+          glo      r7
+          shlc
+          plo      r7
+          ghi      r7
+          shlc
+          phi      r7
+          glo      r8           ; now multiply R7:R8 by 4
+          shl
+          plo      r8
+          ghi      r8
+          shlc
+          phi      r8
+          glo      r7
+          shlc
+          plo      r7
+          ghi      r7
+          shlc
+          phi      r7
+          glo      rb           ; now add R7:R8 to RA:RB
+          str      r2
+          glo      r8
+          add
+          plo      rb
+          ghi      rb
+          str      r2
+          ghi      r8
+          adc
+          phi      rb
+          glo      ra
+          str      r2
+          glo      r7
+          adc
+          plo      ra
+          ghi      ra
+          str      r2
+          ghi      r7
+          adc
+          phi      ra           ; D now has decimal byte
+          adi      '0'          ; convert to ASCII
+          str      rd           ; and write to destination
+          inc      rd
+          ldi      0            ; clear high byte of fractional
+          phi      ra
+          dec      rc           ; increment counter
+          glo      rc           ; need to see if done
+          lbnz     ftoa_9a      ; loop until done
+ftoa_e:   ghi      r9           ; need to check for E
+          lbz      ftoa_dn      ; jump if no E needed
+          ldi      'E'          ; write E to output
+          str      rd
+          inc      rd
+          ghi      r9           ; see if E was negative
+          shl
+          lbnf     ftoa_ep      ; jump if not
+          ldi      '-'          ; write minus sign to output
+          str      rd
+          inc      rd
+          ghi      r9           ; then 2s compliment E
+          xri      0ffh
+          adi      1
+          phi      r9           ; and put it back
+          lbr      ftoa_e1      ; then continue
+ftoa_ep:  ldi      '+'          ; write plus to output
+          str      rd
+          inc      rd
+ftoa_e1:  ldi      0            ; place E as 32-bits onto stack
+          stxd
+          stxd
+          stxd
+          ghi      r9
+          stxd
+          mov      rf,r2        ; point rf to number
+          inc      rf
+          sep      scall        ; call itoa to display E
+          dw       itoa
+          irx                   ; remove number from stack
+          irx
+          irx
+          irx
+ftoa_dn:  ldi      0            ; terminate string
+          str      rd
+          sep      sret         ; and return to caller
+
+; *************************************************
+; ***** Convert floating point to integer     *****
+; ***** RF - pointer to floating point number *****
+; ***** RD - destination integer              *****
+; ***** Returns: DF=1 - overflow              *****
+; ***** Uses:                                 *****
+; *****       R9.0  - exponent                *****
+; *****       R9.1  - sign                    *****
+; *****       R7:R8 - number                  *****
+; *****       RA:RB - fractional              *****
+; *****       RC.0  - digit count             *****
+; *************************************************
+ftoi:     lda      rf           ; retrieve number into R7:R8
+          plo      r8
+          lda      rf
+          phi      r8
+          lda      rf
+          plo      r7
+          lda      rf
+          phi      r7
+          shl                   ; shift sign into DF
+          ldi      0            ; clear D
+          shlc                  ; shift sign into D
+          phi      r9           ; and store it
+ftoi_1:   glo      r7           ; get low bit of exponent
+          shl                   ; shift into DF
+          ghi      r7           ; get high 7 bits of exponent
+          shlc                  ; shift in the low bit
+          plo      r9           ; store it
+          lbnz     ftoi_2       ; jump if exponent is not zero
+          ldi      0            ; result is zero
+          str      rd
+          inc      rd
+          str      rd
+          inc      rd
+          str      rd
+          inc      rd
+          str      rd
+          adi      0            ; clear DF
+          shr
+          sep      sret         ; return to caller
+ftoi_2:   smi      0ffh         ; check for infinity
+          lbnz     ftoi_5       ; jump if not
+ftoi_ov:  ldi      0ffh         ; write highest integer
+          str      rd
+          inc      rd
+          str      rd
+          inc      rd
+          str      rd
+          inc      rd
+          ldi      07fh         ; positive number
+          str      rd
+          smi      0            ; set DF to signal overflow
+          shr
+          sep      sret         ; and return
+
+ftoi_5:   ldi      0            ; clear high byte of number
+          phi      r7
+          glo      r7           ; set implied 1
+          ori      080h
+          plo      r7           ; and put it back
+          ldi      0            ; clear fractional
+          phi      ra
+          plo      ra
+          phi      rb
+          plo      rb
+ftoi_6:   glo      r9           ; get exponent
+          smi      150          ; check for less than 150
+          lbdf     ftoi_7       ; jump if not
+          glo      ra           ; shift fractional right
+          shr
+          plo      ra
+          ghi      rb
+          shrc
+          phi      rb
+          glo      rb
+          shrc
+          plo      rb
+          glo      r8           ; get low bit of number
+          shr                   ; shift it into DF
+          lbnf     ftoi_6a      ; jump if bit was clear
+          glo      ra           ; otherwise set high bit in fractional
+          ori      080h
+          plo      ra           ; put it back
+ftoi_6a:  glo      r7           ; shift number right
+          shr
+          plo      r7
+          ghi      r8
+          shrc
+          phi      r8
+          glo      r8
+          shrc
+          plo      r8
+          glo      r9           ; get exponent
+          adi      1            ; increase it
+          plo      r9           ; put it back
+          lbr      ftoi_6       ; loop back until exponent >= 150
+ftoi_7:   glo      r9           ; get exponent
+          smi      151          ; check for greater than 150
+          lbnf     ftoi_8       ; jump if not
+          ghi      r7           ; check for overflow
+          ani      080h
+          lbnz     ftoi_ov      ; jump if overflow
+          glo      r8           ; shift number left
+          shl
+          plo      r8
+          ghi      r8
+          shlc
+          phi      r8
+          glo      r7
+          shlc
+          plo      r7
+          ghi      r7
+          shlc
+          phi      r7
+          glo      r9           ; get exponent
+          adi      1            ; increment it
+          plo      r9           ; and put it back
+          lbr      ftoi_7       ; loop until exponent in range
+ftoi_8:   glo      r8           ; store number into destination
+          str      rd
+          inc      rd
+          ghi      r8
+          str      rd
+          inc      rd
+          glo      r7
+          str      rd
+          inc      rd
+          ghi      r7
+          str      rd
+          dec      rd           ; move destination pointer back
+          dec      rd
+          dec      rd
+          adi      0            ; signal no overflow
+          shr
+          sep      sret         ; and return to caller
 
