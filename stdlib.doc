@@ -1,0 +1,198 @@
+32-bit Integer Library
+----------------------
+Numbers are stored in memory LSB first
+In general these functions preserve registers they consume
+
+0C005h  l_add32    32-bit integer addition
+                   M[R7] = M[R7] + M[R8]
+          Input:   R7 - Pointer to first number
+                   R8 - Pointer to second number
+
+0C008h  l_sub32    32-bit integer subtraction
+                   M[R7] = M[R7] - M[R8]
+          Input:   R7 - Pointer to first number
+                   R8 - Pointer to second number
+
+0C00Bh  l_mul32    32-bit integer multiplication
+                   M[R7] = M[R7] * M[R8]
+          Input:   R7 - Pointer to first number
+                   R8 - Pointer to second number
+
+0C00Eh  l_div32    32-bit integer division
+                   M[R7] = M[R7] / M[R8]
+          Input:   R7 - Pointer to first number
+                   R8 - Pointer to second number
+
+0C011h  l_inc32    32-bit integer increment
+                   M[RF] = M[RF] + 1
+          Input:   RF - Pointer to number
+
+0C014h  l_dec32:   32-bit integer increment
+                   M[RF] = M[RF] - 1
+          Input:   RF - Pointer to number
+
+0C017h  l_cmp32    32-bit integer compare
+                   M[R7] - M[R8]
+          Input:   R7 - Pointer to first number
+                   R8 - Pointer to second number
+         Output:   D=0  - M[R7] == M[R8]
+                   DF=1 - M[R7] < M[R8]
+ 
+0C01Ah  l_shr32    32-bit integer shift right
+                   M[R7] = M[R7] >> 1
+          Input:   RF - Pointer to number
+   
+0C01Dh  l_shl32    32-bit integer shift left
+                   M[R7] = M[R7] << 1
+          Input:   RF - Pointer to number
+
+0C020h  l_neg32    32-bit integer negate
+                   M[R7] = -M[R7]
+          Input:   RF - Pointer to number
+ 
+0C023h  l_eqz32    32-bit integer zero check
+                   M[RF] == 0
+          Input:   RF - Pointer to number
+         Output:   DF=1 - M[RF] == 0
+         
+0C026h  l_itoa     32-bit integer to ASCII
+                   M[RD] = itoa(M[RF])
+          Input:   RF - Pointer to 32-bit integer
+                   RD - Pointer to destination buffer
+
+0C029h  l_atoi     ASCII to 32-bit integer
+                   M[RD] = atoi(M[RF])
+          Input:   RF - Pointer to ASCII number
+                   RD - Pointer to destination 32-bit integer
+         Output:   R7:R8 - 32-bit integer
+                   RF    - Points to first non-numeric character of input
+
+
+String Library
+--------------
+In general these functions preserve the registers they consume
+
+0C02Ch  l_strcpy   Copy string
+                   M[RD] = M[RF]
+          Input:   RF - Pointer to source string
+                   RD - Pointer to destination string
+
+0C02Fh  l_strcat   Concatenate strings
+                   M[RD] = M[RD] + M[RF]
+          Input:   RF - Pointer to source string
+                   RD - Pointer to destination string
+
+0C032h  l_strlen   Return length of string
+                   RC = strlen(M[RF])
+          Input:   RF - Pointer to string
+         Output:   RC - Length of string
+
+0C035h  l_left     Left portion of string
+                   M[RD] = left(M[RF], RC)
+          Input:   RF - Pointer to source string
+                   RD - Pointer to destination string
+                   RC - Count of characters to copy
+
+0C038h  l_mid      Middle portion of string
+                   M[RD] = mid(M[RF], RB, RC)
+          Input:   RF - Pointer to source string
+                   RD - Pointer to destination string
+                   RB - Starting point.  0=first character
+                   RC - Count of characters to copy
+
+0C03Bh  l_right    Right portion of string
+                   M[RD] = right(M[RF], RC)
+          Input:   RF - Pointer to source string
+                   RD - Pointer to destination string
+                   RC - Count of characters to copy
+
+0C03Eh  l_lower    Convert string to lower-case
+                   M[RF] = lower(M[RF])
+          Input:   RF - Pointer to string to convert
+
+0C041h  l_upper    Convert string to upper-case
+                   M[RF] = upper(M[RF])
+          Input:   RF - Pointer to string to convert
+
+0C044h  l_strcmp:  Compare strings
+                   M[RF] == M[RD]
+          Input:   RF - Pointer to string 1
+                   RD - Pointer to string 2
+         Output:   DF=0 - Strings are unequal
+                   DF=1 - Strings are equal
+                   D=1  - string1 > string2
+                   D=0  - string1 < string2
+
+
+Floating Point Library
+----------------------
+Numbers are stored in memory LSB first
+In general these functions destroy all registers from R7 up, except RE.1
+
+0C047h  l_itof     Convert 32-bit integer to floating point
+                   M[RD] = itof(M[RF])
+          Input:   RF - Pointer to 32-bit integer
+                   RD - Pointer to floating point destination
+
+0C04Ah  l_fpmul    Floating point multiplication
+                   M[RF] = M[RF] * M[RD]
+          Input:   RF - Pointer to first number
+                   RD - Pointer to second number
+
+0C04Dh  l_fpadd    Floating point addition
+                   M[RF] = M[RF] + M[RD]
+          Input:   RF - Pointer to first number
+                   RD - Pointer to second number
+
+0C050h  l_fpsub    Floating point subtraction
+                   M[RF] = M[RF] - M[RD]
+          Input:   RF - Pointer to first number
+                   RD - Pointer to second number
+
+0C053h  l_fpdiv    Floating point division
+                   M[RF] = M[RF] / M[RD]
+          Input:   RF - Pointer to first number
+                   RD - Pointer to second number
+
+0C056h  l_atof     Convert ASCII to floating point
+                   M[RD] = atof(M[RF])
+          Input:   RF - Pointer to ASCII number
+                   RD - Pointer to floating point destination
+
+0C059h  l_ftoa     Floating point to ASCII
+                   M[RD] = ftoa(M[RF])
+          Input:   RF - Pointer to floating point number
+                   RD - Pointer to destination buffer
+
+0C05Ch  l_ftoi     Convert floating point to 32-bit integer
+                   M[RD] = ftoi(M[RF])
+          Input:   RF - Pointer to floating point number
+                   RD - Pointer to destination 32-bit number
+         Output:   DF=1 - Overflow occurred
+
+
+Floating Point Constants
+------------------------
+These are pointers to some common floating point constants
+
+0C0C0h  fpdot1     constant   0.1   03DCCCCCDh
+0C0C4h  fp_0       constant   0     000000000h
+0C0C8h  fp_1       constant   1     03F800000h
+0C0CCh  fp_2       constant   2     040000000h
+0C0D0h  fp_10      constant   10    041200000h
+0C0D4h  fp_100     constant   100   042C80000h
+0C0D8h  fp_1000    constant   1000  0447A0000h
+0C0DCh  fp_e       constant   e     0402DF854h
+0C0E0h  fp_pi      constant   pi    040490FDBh
+
+Notes: l_atof will accept numbers in this format:
+        ####[.####[E[+-]##]
+       So these are all examples of valid numbers:
+         123.456
+         1.23456e+2
+         1.23456e2
+         12345.6e-2
+
+       During ASCII to floating point conversion, the number to the left
+       of the decimal point must fit within a 32-bit integer
+

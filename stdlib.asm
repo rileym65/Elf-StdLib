@@ -4,7 +4,7 @@
 include  bios.inc
 
 #define BASE     0c000h
-#define TEST
+; #define TEST
 
 #ifdef TEST
 
