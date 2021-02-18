@@ -4,7 +4,7 @@
 include  bios.inc
 
 #define BASE     0c000h
-; #define TEST
+#define TEST
 
 #ifdef TEST
 
@@ -29,12 +29,12 @@ start:   sep     scall             ; now call the autobaud
          mov     rf,arg1
          mov     rd,arg2
          sep     scall
-         dw      l_ftoi
+         dw      l_fptan
 
          mov     rf,arg2
          mov     rd,buffer
          sep     scall
-         dw      l_itoa
+         dw      l_ftoa
 
          mov     rf,buffer
          sep     scall
@@ -112,7 +112,7 @@ ascii1:  db      '5',0
 ascii2:  db      '-17',0
 string1: db      'abide',0
 string2: db      'abade',0
-fp1:     db      '12.34e-3',0
+fp1:     db      '0.8',0
 
 ; *************************************************************************
 ; *****                         End of test code                      *****
@@ -151,6 +151,9 @@ l_fpdiv:   lbr     fpdiv                ; M[RF] = M[RF] / M[RD]
 l_atof:    lbr     atof                 ; M[RD] = atof(M[RF])
 l_ftoa:    lbr     ftoa                 ; M[RD] = ftoa(M[RF])
 l_ftoi:    lbr     ftoi                 ; M[RD] = ftoi(M[RF])
+l_fpsin:   lbr     fpsin                ; M[RD] = sin(M[RF])
+l_fpcos:   lbr     fpcos                ; M[RD] = cos(M[RF])
+l_fptan:   lbr     fptan                ; M[RD] = tan(M[RF])
 
            org     BASE+0c0h
 fpdot1:    db      0cdh, 0cch, 0cch, 03dh
@@ -162,6 +165,8 @@ fp_100:    db      00,00,0c8h,042h
 fp_1000:   db      00,00,07ah,044h
 fp_e:      db      054h, 0f8h, 02dh, 040h
 fp_pi:     db      0dbh, 00fh, 049h, 040h
+fp_3:      db      00,00,040h,040h
+fpdot5:    db      000h, 000h, 000h, 03fh
 ; ************************************************
 ; ***** 32-bit Add.    M[R7]=M[R7]+M[R8]     *****
 ; ***** Numbers in memory stored LSB first   *****
@@ -2811,4 +2816,338 @@ ftoi_8:   glo      r8           ; store number into destination
           adi      0            ; signal no overflow
           shr
           sep      sret         ; and return to caller
+
+
+; ************************
+; ***** Trig Library *****
+; ************************
+
+getargs:  lda      r6           ; get passed argument
+          str      r2           ; store for add
+          glo      r2           ; add stack offset
+          add
+          plo      rf           ; put into first argument
+          ghi      r2           ; high of stack
+          adci     0            ; propagate carry
+          phi      rf           ; rf now has argument address
+          inc      rf           ; remove last call offset
+          inc      rf
+          lda      r6           ; get passed argument
+          str      r2           ; store for add
+          glo      r2           ; add stack offset
+          add
+          plo      rd           ; put into second argument
+          ghi      r2           ; high of stack
+          adci     0            ; propagate carry
+          phi      rd           ; rd now has argument address
+          inc      rd           ; remove last call offset
+          inc      rd
+          sep      sret         ; return to caller
+
+addtows:  irx                   ; retrieve return address
+          ldxa
+          phi      r7
+          ldx
+          plo      r7
+          inc      rd           ; move to msb
+          inc      rd
+          inc      rd
+          ldn      rd           ; retrieve
+          stxd                  ; and place on stack
+          dec      rd
+          ldn      rd           ; retrieve next byte
+          stxd                  ; and place on stack
+          dec      rd
+          ldn      rd           ; retrieve next byte
+          stxd                  ; and place on stack
+          dec      rd
+          ldn      rd           ; retrieve next byte
+          stxd                  ; and place on stack
+          glo      r7           ; put return address back on stack
+          stxd
+          ghi      r7
+          stxd
+          sep      sret         ; return to caller
+
+; ******************************************************
+; ***** sin                                        *****
+; ***** RF - Pointer to floating point number      *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1  R7 - sum                       *****
+; *****       R2+5  R8 - pwr                       *****
+; *****       R2+9  R9 - last                      *****
+; *****       R2+13 RA - fct                       *****
+; *****       R2+17 RB - fctCount                  *****
+; *****       R2+21 RC - tmp                       *****
+; *****       R2+25 RD - sgn                       *****
+; *****       R2+29    - angle                     *****
+; ******************************************************
+fpsin:    push     rd           ; save destination
+          mov      rd,rf        ; angle = argument
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,fp_1      ; sgn = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          stxd                  ; make space for tmp
+          stxd
+          stxd
+          stxd
+          mov      rd,fp_2      ; fctCount = 2.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,fp_1      ; fct = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          stxd                  ; make space for last
+          stxd
+          stxd
+          stxd
+          mov      rd,rf        ; pwr = argument
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,rf        ; sum = argument
+          sep      scall        ; add to workspace
+          dw       addtows
+          
+sincos:   sep      scall        ; angle = angle * angle
+          dw       getargs
+          db       29,29
+          sep      scall        ; angle = angle * angle
+          dw       fpmul
+sincos_l: sep      scall        ; need to see if sum == last
+          dw       getargs
+          db       9,1
+          ldi      4            ; 4 bytes to check
+          plo      rc
+          ldi      0            ; clear comparison flag
+          plo      re
+sincos_1: ldn      rd           ; get byte from sum
+          str      r2           ; save for comparison
+          ldn      rf           ; get point from last
+          sm                    ; compare them
+          str      r2           ; store to combine with comparison flag
+          glo      re           ; get comparison flag
+          or                    ; combine
+          plo      re           ; put back into comparison
+          ldn      rd           ; get byte from sum
+          str      rf           ; store into last
+          inc      rd           ; increment pointers
+          inc      rf
+          dec      rc           ; decrement count
+          glo      rc           ; see if done
+          lbnz     sincos_1     ; jump if not
+          glo      re           ; get comparison flag
+          lbz      sincos_d     ; jump if done
+          glo      r2           ; point to msb of sgn
+          adi      28
+          plo      r7
+          ghi      r2
+          adci     0
+          phi      r7
+          ldn      r7           ; get msb of sgn
+          xri      080h         ; flip the sign
+          str      r7           ; and put it back
+          sep      scall        ; pwr = pwr * angle
+          dw       getargs
+          db       5,29
+          sep      scall
+          dw       fpmul
+          sep      scall        ; fct = fct * fctCount
+          dw       getargs
+          db       13,17
+          sep      scall
+          dw       fpmul
+          glo      r2           ; fctCount = fctCount + 1
+          adi      17
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          mov      rd,fp_1
+          sep      scall
+          dw       fpadd
+          sep      scall        ; fct = fct * fctCount
+          dw       getargs
+          db       13,17
+          sep      scall
+          dw       fpmul
+          glo      r2           ; fctCount = fctCount + 1
+          adi      17
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          mov      rd,fp_1
+          sep      scall
+          dw       fpadd
+          sep      scall        ; tmp = sgn
+          dw       getargs
+          db       21,25
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          sep      scall        ; tmp = tmp * pwr
+          dw       getargs
+          db       21,5
+          sep      scall
+          dw       fpmul
+          sep      scall        ; tmp = tmp / fct
+          dw       getargs
+          db       21,13
+          sep      scall
+          dw       fpdiv
+          sep      scall        ; sum = sum + tmp
+          dw       getargs
+          db       1,21
+          sep      scall
+          dw       fpadd
+          lbr      sincos_l     ; loop until done
+sincos_d: irx                   ; recover answer
+          ldxa
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldx
+          phi      r7
+          glo      r2           ; clean workspace off stack
+          adi      28
+          plo      r2
+          ghi      r2
+          adci     0
+          phi      r2
+          pop      rd           ; recover destination address
+          glo      r8           ; store answer
+          str      rd
+          inc      rd
+          ghi      r8
+          str      rd
+          inc      rd
+          glo      r7
+          str      rd
+          inc      rd
+          ghi      r7
+          str      rd
+          sep      sret         ; and return to caller
+
+; ******************************************************
+; ***** cos                                        *****
+; ***** RF - Pointer to floating point number      *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1  R7 - sum                       *****
+; *****       R2+5  R8 - pwr                       *****
+; *****       R2+9  R9 - last                      *****
+; *****       R2+13 RA - fct                       *****
+; *****       R2+17 RB - fctCount                  *****
+; *****       R2+21 RC - tmp                       *****
+; *****       R2+25 RD - sgn                       *****
+; *****       R2+29    - angle                     *****
+; ******************************************************
+fpcos:    push     rd           ; save destination
+          mov      rd,rf        ; angle = argument
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,fp_1      ; sgn = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          stxd                  ; make space for tmp
+          stxd
+          stxd
+          stxd
+          mov      rd,fp_1      ; fctCount = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,fp_1      ; fct = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          stxd                  ; make space for last
+          stxd
+          stxd
+          stxd
+          mov      rd,fp_1      ; pwr = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,fp_1      ; sum = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          lbr      sincos       ; now compute
+
+; ******************************************************
+; ***** tan                                        *****
+; ***** RF - Pointer to floating point number      *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - s                         *****
+; *****       R2+5     - c                         *****
+; ******************************************************
+fptan:    push     rd           ; save destination
+          mov      rd,rf        ; s = argument
+          sep      scall
+          dw       addtows
+          mov      rd,rf        ; c = argument
+          sep      scall
+          dw       addtows
+          glo      r2           ; setup for computing sin
+          plo      rf
+          plo      rd
+          ghi      r2
+          phi      rf
+          phi      rd
+          inc      rf
+          inc      rd
+          sep      scall        ; compute sin
+          dw       fpsin
+          glo      r2           ; setup to compute cos
+          adi      5
+          plo      rd
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rd
+          phi      rf
+          sep      scall        ; compute cos
+          dw       fpcos
+          sep      scall        ; get arguments for division
+          dw       getargs
+          db       1,5
+          sep      scall        ; s = s / c
+          dw       fpdiv
+          irx                   ; recover answer
+          ldxa
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldxa
+          phi      r7
+          irx                   ; move past c
+          irx
+          irx
+          pop      rd           ; recover destination address
+          glo      r8           ; store answer
+          str      rd
+          inc      rd
+          ghi      r8
+          str      rd
+          inc      rd
+          glo      r7
+          str      rd
+          inc      rd
+          ghi      r7
+          str      rd
+          sep      sret         ; and return to caller
+
 
