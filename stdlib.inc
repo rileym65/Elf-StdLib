@@ -28,6 +28,14 @@ l_fpdiv:   equ     0c053h
 l_atof:    equ     0c056h
 l_ftoa:    equ     0c059h
 l_ftoi:    equ     0c05ch
+l_fpsin:   equ     0c05fh
+l_fpcos:   equ     0c062h
+l_fptan:   equ     0c065h
+l_fplog:   equ     0c068h
+l_fpexp:   equ     0c06bh
+l_fppow:   equ     0c06eh
+l_fpsqrt:  equ     0c071h
+
 fpdot1:    equ     0c0c0h
 fp_0:      equ     0c0c4h
 fp_1:      equ     0c0c8h
