@@ -27,9 +27,10 @@ start:   sep     scall             ; now call the autobaud
          dw      l_atof
 
          mov     rf,arg1
+         mov     rc,fpdot5
          mov     rd,arg2
          sep     scall
-         dw      l_fptan
+         dw      l_fpsqrt
 
          mov     rf,arg2
          mov     rd,buffer
@@ -112,7 +113,7 @@ ascii1:  db      '5',0
 ascii2:  db      '-17',0
 string1: db      'abide',0
 string2: db      'abade',0
-fp1:     db      '0.8',0
+fp1:     db      '90.8',0
 
 ; *************************************************************************
 ; *****                         End of test code                      *****
@@ -154,6 +155,10 @@ l_ftoi:    lbr     ftoi                 ; M[RD] = ftoi(M[RF])
 l_fpsin:   lbr     fpsin                ; M[RD] = sin(M[RF])
 l_fpcos:   lbr     fpcos                ; M[RD] = cos(M[RF])
 l_fptan:   lbr     fptan                ; M[RD] = tan(M[RF])
+l_fplog:   lbr     fplog                ; M[RD] = ln(M[RF])
+l_fpexp:   lbr     fpexp                ; M[RD] = exp(M[RF])
+l_fppow:   lbr     fppow                ; M[RD] = M[RF]**M[RC]
+l_fpsqrt:  lbr     fpsqrt               ; M[RD] = sqrt(M[RF])
 
            org     BASE+0c0h
 fpdot1:    db      0cdh, 0cch, 0cch, 03dh
@@ -888,7 +893,7 @@ atoi:      push    ra           ; save consumed registers
 atoi_lp:   ldn     rf           ; get byte from input
            smi     '0'          ; see if below digits
            lbnf    atoi_dn      ; jump if not valid digit
-           smi     9            ; check for high of range
+           smi     10           ; check for high of range
            lbdf    atoi_dn      ; jump if not valid digit
            glo     r8           ; multiply answer by 2
            shl
@@ -2110,7 +2115,7 @@ atof_2a:  lda      rf           ; get next byte from input
           plo      re           ; keep a copy
           smi      '0'          ; see if below digits
           lbnf     atof_2b      ; jump if not valid digit
-          smi      9            ; check for high of range
+          smi      10           ; check for high of range
           lbdf     atof_2b      ; jump if not valid digit
           glo      re           ; recover number
           smi      '0'          ; convert to binary
@@ -2250,7 +2255,7 @@ atof_ex1: ldi      0            ; set exponent count to zero
 atof_ex2: ldn      rf           ; get byte from input
           smi      '0'          ; see if below digits
           lbnf     atof_ex3     ; jump if not valid digit
-          smi      9            ; check for high of range
+          smi      10           ; check for high of range
           lbdf     atof_ex3     ; jump if not valid digit
           glo      rc           ; get count
           shl                   ; multiply by 2
@@ -3150,4 +3155,385 @@ fptan:    push     rd           ; save destination
           str      rd
           sep      sret         ; and return to caller
 
+; ******************************************************
+; ***** Natural logarithm                          *****
+; ***** RF - Pointer to floating point number      *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - sum                       *****
+; *****       R2+5     - last                      *****
+; *****       R2+9     - k                         *****
+; *****       R2+13    - pwr                       *****
+; *****       R2+17    - tmp                       *****
+; *****       R2+21    - n                         *****
+; ******************************************************
+fplog:    push     rd           ; save destination
+          mov      rd,rf        ; n = argument
+          sep      scall
+          dw       addtows
+          mov      rd,rf        ; tmp = argument
+          sep      scall
+          dw       addtows
+          stxd                  ; reserve space for pwr
+          stxd
+          stxd
+          stxd
+          mov      rd,fp_1      ; k = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          mov      rd,fp_1      ; last = 1.0
+          sep      scall        ; add to workspace
+          dw       addtows
+          ldi      0            ; sum = 0
+          stxd
+          stxd
+          stxd
+          stxd
+          glo      r2           ; point to tmp
+          adi      17
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          mov      rd,fp_1      ; point to 1.0
+          sep      scall        ; compute n+1
+          dw       fpadd
+          glo      r2           ; point to n
+          adi      21
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          mov      rd,fp_1      ; point to 1.0
+          sep      scall        ; compute n-1
+          dw       fpsub
+          sep      scall        ; compute (n-1)/(n+1)
+          dw       getargs
+          db       21,17
+          sep      scall
+          dw       fpdiv
+          sep      scall        ; pwr = n
+          dw       getargs
+          db       13,21
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          sep      scall        ; n = n * n
+          dw       getargs
+          db       21,21
+          sep      scall
+          dw       fpmul
+fplog_l:  sep      scall        ; need to see if sum == last
+          dw       getargs
+          db       5,1
+          ldi      4            ; 4 bytes to check
+          plo      rc
+          ldi      0            ; clear comparison flag
+          plo      re
+fplog_1:  ldn      rd           ; get byte from sum
+          str      r2           ; save for comparison
+          ldn      rf           ; get point from last
+          sm                    ; compare them
+          str      r2           ; store to combine with comparison flag
+          glo      re           ; get comparison flag
+          or                    ; combine
+          plo      re           ; put back into comparison
+          ldn      rd           ; get byte from sum
+          str      rf           ; store into last
+          inc      rd           ; increment pointers
+          inc      rf
+          dec      rc           ; decrement count
+          glo      rc           ; see if done
+          lbnz     fplog_1      ; jump if not
+          glo      re           ; get comparison flag
+          lbz      fplog_d      ; jump if done
+          sep      scall        ; tmp = pwr
+          dw       getargs
+          db       17,13
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          sep      scall        ; tmp = tmp / k
+          dw       getargs
+          db       17,9
+          sep      scall
+          dw       fpdiv
+          sep      scall        ; sum = sum + tmp
+          dw       getargs
+          db       1,17
+          sep      scall
+          dw       fpadd
+          sep      scall        ; pwr = pwr * n
+          dw       getargs
+          db       13,21
+          sep      scall
+          dw       fpmul
+          glo      r2           ; k = k + 2
+          adi      9
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          mov      rd,fp_2
+          sep      scall
+          dw       fpadd
+          lbr      fplog_l      ; loop until done
+fplog_d:  sep      scall        ; sum = sum + sum
+          dw       getargs
+          db       1,1
+          sep      scall
+          dw       fpadd
+          irx                   ; recover answer
+          ldxa     
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldx
+          phi      r7
+          glo      r2           ; clean up the stack
+          adi      20
+          plo      r2
+          ghi      r2
+          adci     0
+          phi      r2
+          pop      rd           ; recover destination address
+          glo      r8           ; store answer
+          str      rd
+          inc      rd
+          ghi      r8
+          str      rd
+          inc      rd
+          glo      r7
+          str      rd
+          inc      rd
+          ghi      r7
+          str      rd
+          sep      sret         ; and return to caller
+
+; ******************************************************
+; ***** Natural exp                                *****
+; ***** RF - Pointer to floating point number      *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - sum                       *****
+; *****       R2+5     - last                      *****
+; *****       R2+9     - fct                       *****
+; *****       R2+13    - fctCount                  *****
+; *****       R2+17    - pwr                       *****
+; *****       R2+21    - tmp                       *****
+; *****       R2+25    - n                         *****
+; ******************************************************
+fpexp:    push     rd           ; save destination
+          mov      rd,rf        ; n = argument
+          sep      scall
+          dw       addtows
+          stxd                  ; space for tmp
+          stxd
+          stxd
+          stxd
+          mov      rd,rf        ; pwr = argument
+          sep      scall
+          dw       addtows
+          mov      rd,fp_2      ; fctCount = 2.0
+          sep      scall
+          dw       addtows
+          mov      rd,fp_1      ; fct = 1.0
+          sep      scall
+          dw       addtows
+          mov      rd,fp_0      ; last = 0
+          sep      scall
+          dw       addtows
+          mov      rd,rf        ; sum = argument
+          sep      scall
+          dw       addtows
+          mov      rf,r2        ; sum = sum + 1
+          inc      rf
+          mov      rd,fp_1
+          sep      scall
+          dw       fpadd
+fpexp_l:  sep      scall        ; need to see if sum == last
+          dw       getargs
+          db       5,1
+          ldi      4            ; 4 bytes to check
+          plo      rc
+          ldi      0            ; clear comparison flag
+          plo      re
+fpexp_1:  ldn      rd           ; get byte from sum
+          str      r2           ; save for comparison
+          ldn      rf           ; get point from last
+          sm                    ; compare them
+          str      r2           ; store to combine with comparison flag
+          glo      re           ; get comparison flag
+          or                    ; combine
+          plo      re           ; put back into comparison
+          ldn      rd           ; get byte from sum
+          str      rf           ; store into last
+          inc      rd           ; increment pointers
+          inc      rf
+          dec      rc           ; decrement count
+          glo      rc           ; see if done
+          lbnz     fpexp_1      ; jump if not
+          glo      re           ; get comparison flag
+          lbz      fpexp_d      ; jump if done
+          sep      scall        ; pwr = pwr * n
+          dw       getargs
+          db       17,25
+          sep      scall
+          dw       fpmul
+          sep      scall        ; fct = fct * fctCount
+          dw       getargs
+          db       9,13
+          sep      scall
+          dw       fpmul
+          glo      r2           ; fctCount = fctCount + 1
+          adi      13
+          plo      rf
+          ghi      r2
+          adci     0
+          phi      rf
+          mov      rd,fp_1
+          sep      scall
+          dw       fpadd
+          sep      scall        ; tmp = pwr
+          dw       getargs
+          db       21,17
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          sep      scall        ; tmp = tmp / fct
+          dw       getargs
+          db       21,9
+          sep      scall
+          dw       fpdiv
+          sep      scall        ; sum = sum + tmp
+          dw       getargs
+          db       1,21
+          sep      scall
+          dw       fpadd
+          lbr      fpexp_l      ; loop until done
+fpexp_d:  irx                   ; recover answer
+          ldxa
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldx
+          phi      r7
+          glo      r2           ; clean workspace off stack
+          adi      24
+          plo      r2
+          ghi      r2
+          adci     0
+          phi      r2
+          pop      rd           ; recover destination address
+          glo      r8           ; store answer
+          str      rd
+          inc      rd
+          ghi      r8
+          str      rd
+          inc      rd
+          glo      r7
+          str      rd
+          inc      rd
+          ghi      r7
+          str      rd
+          sep      sret         ; and return to caller
+
+; ******************************************************
+; ***** Power x^y                                  *****
+; ***** RF - Pointer to floating point number x    *****
+; ***** RC - Pointer to floating point number y    *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - x                         *****
+; *****       R2+5     - y                         *****
+; ******************************************************
+fppow:    push     rd           ; save destination
+          mov      rd,rc        ; put y in workspace
+          sep      scall
+          dw       addtows
+          mov      rd,rf        ; put x in workspace
+          sep      scall
+          dw       addtows
+          glo      r2           ; x = log(x)
+          plo      rf
+          plo      rd
+          ghi      r2
+          phi      rf
+          phi      rd
+          inc      rf
+          inc      rd
+          sep      scall
+          dw       fplog
+          sep      scall        ; now x = x * y
+          dw       getargs
+          db       1,5
+          sep      scall
+          dw       fpmul
+          sep      scall        ; x = exp(x)
+          dw       getargs
+          db       1,1
+          sep      scall
+          dw       fpexp
+          irx                   ; recover result
+          ldxa
+          plo      r8
+          ldxa
+          phi      r8
+          ldxa
+          plo      r7
+          ldxa
+          phi      r7
+          irx                   ; clean rest of stack
+          irx
+          irx
+          pop      rd           ; recover destination
+          glo      r8           ; store answer
+          str      rd
+          inc      rd
+          ghi      r8
+          str      rd
+          inc      rd
+          glo      r7
+          str      rd
+          inc      rd
+          ghi      r7
+          str      rd
+          sep      sret         ; and return to caller
+
+
+; ******************************************************
+; ***** Square root                                *****
+; ***** RF - Pointer to floating point number x    *****
+; ***** RD - Pointer to floating point destination *****
+; ******************************************************
+fpsqrt:   mov      rc,fpdot5    ; need to do x**(1/2)
+          lbr      fppow
 
