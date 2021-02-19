@@ -30,7 +30,7 @@ start:   sep     scall             ; now call the autobaud
          mov     rc,fpdot5
          mov     rd,arg2
          sep     scall
-         dw      l_fpsqrt
+         dw      l_fpatan
 
          mov     rf,arg2
          mov     rd,buffer
@@ -113,7 +113,7 @@ ascii1:  db      '5',0
 ascii2:  db      '-17',0
 string1: db      'abide',0
 string2: db      'abade',0
-fp1:     db      '90.8',0
+fp1:     db      '3.8',0
 
 ; *************************************************************************
 ; *****                         End of test code                      *****
@@ -159,6 +159,7 @@ l_fplog:   lbr     fplog                ; M[RD] = ln(M[RF])
 l_fpexp:   lbr     fpexp                ; M[RD] = exp(M[RF])
 l_fppow:   lbr     fppow                ; M[RD] = M[RF]**M[RC]
 l_fpsqrt:  lbr     fpsqrt               ; M[RD] = sqrt(M[RF])
+l_fpatan:  lbr     fpatan               ; M[RD] = atan(M[RF])
 
            org     BASE+0c0h
 fpdot1:    db      0cdh, 0cch, 0cch, 03dh
@@ -172,6 +173,8 @@ fp_e:      db      054h, 0f8h, 02dh, 040h
 fp_pi:     db      0dbh, 00fh, 049h, 040h
 fp_3:      db      00,00,040h,040h
 fpdot5:    db      000h, 000h, 000h, 03fh
+fp_halfpi: db      0dbh, 00fh, 0c9h, 03fh
+
 ; ************************************************
 ; ***** 32-bit Add.    M[R7]=M[R7]+M[R8]     *****
 ; ***** Numbers in memory stored LSB first   *****
@@ -2874,6 +2877,19 @@ addtows:  irx                   ; retrieve return address
           stxd
           sep      sret         ; return to caller
 
+fpcopy:   lda      rd           ; copy source to destination
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          inc      rf
+          lda      rd
+          str      rf
+          sep      sret         ; return to caller
+
 ; ******************************************************
 ; ***** sin                                        *****
 ; ***** RF - Pointer to floating point number      *****
@@ -3537,3 +3553,366 @@ fppow:    push     rd           ; save destination
 fpsqrt:   mov      rc,fpdot5    ; need to do x**(1/2)
           lbr      fppow
 
+
+; ******************************************************
+; ***** atan                                       *****
+; ***** RF - Pointer to floating point number      *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - count                     *****
+; *****       R2+3     - sum                       *****
+; *****       R2+7     - sign                      *****
+; *****       R2+8     - pwr                       *****
+; *****       R2+12    - last                      *****
+; *****       R2+16    - k                         *****
+; *****       R2+20    - tmp                       *****
+; *****       R2+24    - sgn                       *****
+; *****       R2+28    - n                         *****
+; *****       R2+32    - tmp2
+; ******************************************************
+fpatan:       sep       scall          ; check for 0 argument
+              dw        iszero
+              lbnf      fpatan_go      ; jump if not zero
+              ldi       0              ; result is zero
+              str       rd
+              inc       rd
+              str       rd
+              inc       rd
+              str       rd
+              inc       rd
+              str       rd
+              sep       sret           ; and return
+fpatan_go:    push      rd             ; save destination
+              stxd                     ; space for tmp2
+              stxd
+              stxd
+              stxd
+              mov       rd,rf          ; n = argument
+              sep       scall
+              dw        addtows
+              mov       rd,fp_1        ; sgn = 1
+              sep       scall
+              dw        addtows
+              stxd                     ; space for tmp
+              stxd
+              stxd
+              stxd
+              mov       rd,fp_3        ; k = 3
+              sep       scall
+              dw        addtows
+              mov       rd,fp_0        ; last = 0
+              sep       scall
+              dw        addtows
+              mov       rd,rf          ; pwr = argument
+              sep       scall
+              dw        addtows
+              inc       rf             ; point to msb of argument
+              inc       rf
+              inc       rf
+              ldn       rf             ; retreive it
+              dec       rf             ; move pointer back
+              dec       rf
+              dec       rf
+              ani       080h           ; keep only sign bit
+              stxd                     ; sign = sign of argument
+              mov       rd,rf          ; sum = argument
+              sep       scall
+              dw        addtows
+              ldi       3              ; count = 1000
+              stxd
+              ldi       0e8h
+              stxd
+              sep       scall          ; n = n * n
+              dw        getargs
+              db        28,28
+              sep       scall
+              dw        fpmul
+
+              glo       r2             ; point exponent of n
+              adi       30
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              lda       rf             ; get low bit of exponent
+              shl                      ; shift into DF
+              ldn       rf             ; get high bits of exponent
+              shlc                     ; shift in low bit
+              shl                      ; see if high bit is set (>= 2)
+              lbdf      fpatan_2       ; jump if so
+              shrc                     ; shift bit back in
+              smi       07fh           ; check for less than 1
+              lbnz      fpatan_1       ; jump if less than 1
+              dec       rf             ; back to high byte of mantissa
+              ldn       rf             ; retrieve it
+              ani       07fh           ; clear high byte
+              lbnz      fpatan_2       ; jump if greater than 1
+              dec       rf             ; middle byte of mantissa
+              ldn       rf
+              lbnz      fpatan_2
+              dec       rf             ; low byte of mantissa
+              ldn       rf
+              lbnz      fpatan_2
+fpatan_1:     irx                      ; recover count
+              ldxa
+              plo       rc
+              ldx
+              phi       rc
+              dec       rc             ; decrement count
+              ghi       rc             ; put it back
+              stxd
+              glo       rc
+              stxd
+              glo       rc             ; check for nonzero
+              lbnz      fpatan_1a      ; jump if not
+              ghi       rc
+              lbz       fpatan_dn      ; otherwise done
+fpatan_1a:    sep       scall          ; need to see if sum == last
+              dw        getargs
+              db        12,3
+              ldi       4              ; 4 bytes to check
+              plo       rc
+              ldi       0              ; clear comparison flag
+              plo       re
+fpatan_1b:    ldn       rd             ; get byte from sum
+              str       r2             ; save for comparison
+              ldn       rf             ; get point from last
+              sm                       ; compare them
+              str       r2             ; store to combine with comparison flag
+              glo       re             ; get comparison flag
+              or                       ; combine
+              plo       re             ; put back into comparison
+              ldn       rd             ; get byte from sum
+              str       rf             ; store into last
+              inc       rd             ; increment pointers
+              inc       rf
+              dec       rc             ; decrement count
+              glo       rc             ; see if done
+              lbnz      fpatan_1b      ; jump if not
+              glo       re             ; get comparison flag
+              lbz       fpatan_dn      ; jump if done
+              sep       scall          ; pwr = pwr * n
+              dw        getargs
+              db        8,28
+              sep       scall
+              dw        fpmul
+              glo       r2             ; sgn = -sgn
+              adi       27
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              ldn       rf
+              xri       080h
+              str       rf
+              sep       scall          ; tmp = sgn
+              dw        getargs
+              db        20,24
+              lda       rd
+              str       rf
+              inc       rf
+              lda       rd
+              str       rf
+              inc       rf
+              lda       rd
+              str       rf
+              inc       rf
+              lda       rd
+              str       rf
+              sep       scall          ; tmp = tmp * pwr
+              dw        getargs
+              db        20,8
+              sep       scall
+              dw        fpmul
+              sep       scall          ; tmp = tmp / k
+              dw        getargs
+              db        20,16
+              sep       scall
+              dw        fpdiv
+              sep       scall          ; sum = sum + tmp
+              dw        getargs
+              db        3,20
+              sep       scall
+              dw        fpadd
+              glo       r2             ; k = k + 2
+              adi       16
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_2
+              sep       scall
+              dw        fpadd
+              lbr       fpatan_1       ; loop until done
+     
+
+fpatan_2:     glo       r2             ; tmp = 1
+              adi       20
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_1
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp = tmp / sum
+              dw        getargs
+              db        20,3
+              sep       scall
+              dw        fpdiv
+              sep       scall          ; sum = tmp
+              dw        getargs
+              db        3,20
+              sep       scall
+              dw        fpcopy
+              glo       r2             ; tmp = pi / 2
+              adi       20
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_halfpi
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp = tmp - sum
+              dw        getargs
+              db        20,3
+              sep       scall
+              dw        fpsub
+              sep       scall          ; sum = tmp
+              dw        getargs
+              db        3,20
+              sep       scall
+              dw        fpcopy
+              glo       r2             ; sgn = -sgn
+              adi       27
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              ldn       rf
+              xri       080h
+              str       rf
+fpatan_2lp:   irx                      ; recover count
+              ldxa
+              plo       rc
+              ldx
+              phi       rc
+              dec       rc             ; decrement count
+              ghi       rc             ; put it back
+              stxd
+              glo       rc
+              stxd
+              glo       rc             ; check for nonzero
+              lbnz      fpatan_2a      ; jump if not
+              ghi       rc
+              lbz       fpatan_dn      ; otherwise done
+fpatan_2a:    sep       scall          ; need to see if sum == last
+              dw        getargs
+              db        12,3
+              ldi       4              ; 4 bytes to check
+              plo       rc
+              ldi       0              ; clear comparison flag
+              plo       re
+fpatan_2b:    ldn       rd             ; get byte from sum
+              str       r2             ; save for comparison
+              ldn       rf             ; get point from last
+              sm                       ; compare them
+              str       r2             ; store to combine with comparison flag
+              glo       re             ; get comparison flag
+              or                       ; combine
+              plo       re             ; put back into comparison
+              ldn       rd             ; get byte from sum
+              str       rf             ; store into last
+              inc       rd             ; increment pointers
+              inc       rf
+              dec       rc             ; decrement count
+              glo       rc             ; see if done
+              lbnz      fpatan_2b      ; jump if not
+              glo       re             ; get comparison flag
+              lbz       fpatan_dn      ; jump if done
+              sep       scall          ; pwr = pwr * n
+              dw        getargs
+              db        8,28
+              sep       scall
+              dw        fpmul
+              glo       r2             ; sgn = -sgn
+              adi       27
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              ldn       rf
+              xri       080h
+              str       rf
+              sep       scall          ; tmp = k
+              dw        getargs
+              db        20,16
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp = tmp * pwr
+              dw        getargs
+              db        20,8
+              sep       scall
+              dw        fpmul
+              sep       scall          ; tmp2 = sgn
+              dw        getargs
+              db        32,24
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp2 = tmp2 / tmp
+              dw        getargs
+              db        32,20
+              sep       scall
+              dw        fpdiv
+              sep       scall          ; sum = sum + tmp2
+              dw        getargs
+              db        3,32
+              sep       scall
+              dw        fpadd
+              glo       r2             ; k = k + 2
+              adi       16
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_2
+              sep       scall
+              dw        fpadd
+              lbr       fpatan_2lp     ; loop until done
+fpatan_dn:    irx                      ; remove count from stack
+              irx
+              irx                      ; recover answer
+              ldxa
+              plo       r8
+              ldxa
+              phi       r8
+              ldxa
+              plo       r7
+              ldxa
+              phi       r7
+              ldx                      ; get sign
+              lbz       fpatan_dn1     ; jump if not negative
+              ghi       r7             ; make answer negative
+              xri       080h
+              phi       r7
+fpatan_dn1:   glo       r2             ; clean workspace off stack
+              adi       28
+              plo       r2
+              ghi       r2
+              adci      0
+              phi       r2
+              pop       rd             ; recover destination
+              glo       r8             ; store answer
+              str       rd
+              inc       rd
+              ghi       r8
+              str       rd
+              inc       rd
+              glo       r7
+              str       rd
+              inc       rd
+              ghi       r7
+              str       rd
+              sep       sret           ; return to caller
+ 
