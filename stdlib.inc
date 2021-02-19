@@ -35,6 +35,9 @@ l_fplog:   equ     0c068h
 l_fpexp:   equ     0c06bh
 l_fppow:   equ     0c06eh
 l_fpsqrt:  equ     0c071h
+l_fpatan:  equ     0c074h
+l_fpasin:  equ     0c077h
+l_fpacos:  equ     0c07ah
 
 fpdot1:    equ     0c0c0h
 fp_0:      equ     0c0c4h

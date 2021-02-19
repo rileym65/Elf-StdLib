@@ -30,7 +30,7 @@ start:   sep     scall             ; now call the autobaud
          mov     rc,fpdot5
          mov     rd,arg2
          sep     scall
-         dw      l_fpatan
+         dw      l_fpacos
 
          mov     rf,arg2
          mov     rd,buffer
@@ -113,7 +113,7 @@ ascii1:  db      '5',0
 ascii2:  db      '-17',0
 string1: db      'abide',0
 string2: db      'abade',0
-fp1:     db      '3.8',0
+fp1:     db      '-0.8',0
 
 ; *************************************************************************
 ; *****                         End of test code                      *****
@@ -160,6 +160,8 @@ l_fpexp:   lbr     fpexp                ; M[RD] = exp(M[RF])
 l_fppow:   lbr     fppow                ; M[RD] = M[RF]**M[RC]
 l_fpsqrt:  lbr     fpsqrt               ; M[RD] = sqrt(M[RF])
 l_fpatan:  lbr     fpatan               ; M[RD] = atan(M[RF])
+l_fpasin:  lbr     fpasin               ; M[RD] = asin(M[RF])
+l_fpacos:  lbr     fpacos               ; M[RD] = acos(M[RF])
 
            org     BASE+0c0h
 fpdot1:    db      0cdh, 0cch, 0cch, 03dh
@@ -3573,7 +3575,7 @@ fpsqrt:   mov      rc,fpdot5    ; need to do x**(1/2)
 fpatan:       sep       scall          ; check for 0 argument
               dw        iszero
               lbnf      fpatan_go      ; jump if not zero
-              ldi       0              ; result is zero
+fpzero:       ldi       0              ; result is zero
               str       rd
               inc       rd
               str       rd
@@ -3916,3 +3918,220 @@ fpatan_dn1:   glo       r2             ; clean workspace off stack
               str       rd
               sep       sret           ; return to caller
  
+
+; ******************************************************
+; ***** asin                                       *****
+; ***** RF - Pointer to floating point number x    *****
+; ***** RC - Pointer to floating point number y    *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - n                         *****
+; *****       R2+5     - sign                      *****
+; *****       R2+6     - tmp                       *****
+; ******************************************************
+fpasin:       sep       scall          ; check for 0 argument
+              dw        iszero
+              lbdf      fpzero         ; return 0
+              push      rd             ; save destination
+              stxd                     ; make space for n
+              stxd
+              stxd
+              stxd
+              inc       rf             ; point to sign of argument
+              inc       rf
+              inc       rf
+              ldn       rf             ; retrieve it
+              dec       rf             ; move pointer back
+              dec       rf
+              dec       rf
+              ani       080h           ; keep only sign bit
+              stxd                     ; sign = sign bit
+              mov       rd,rf          ; n = argument
+              sep       scall
+              dw        addtows
+              sep       scall          ; n = n * n
+              dw        getargs
+              db        1,1
+              sep       scall
+              dw        fpmul
+              glo       r2             ; tmp = 1.0
+              adi       6
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_1
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp = tmp - n;
+              dw        getargs
+              db        6,1
+              sep       scall
+              dw        fpsub
+              sep       scall          ; n = n / tmp
+              dw        getargs
+              db        1,6
+              sep       scall
+              dw        fpdiv
+              sep       scall          ; n = sqrt(n)
+              dw        getargs
+              db        1,1
+              sep       scall
+              dw        fpsqrt
+              sep       scall          ; n = atan(n)
+              dw        getargs
+              db        1,1
+              sep       scall
+              dw        fpatan
+              irx                      ; recover answer
+              ldxa
+              plo       r8
+              ldxa
+              phi       r8
+              ldxa
+              plo       r7
+              ldxa
+              phi       r7
+              ldx                      ; get sign
+              lbz       fpasin_dn1     ; jump if not negative
+              ghi       r7             ; make answer negative
+              xri       080h
+              phi       r7
+fpasin_dn1:   irx                      ; clean workspace off stack
+              irx
+              irx
+              irx
+              pop       rd             ; recover destination
+              glo       r8             ; store answer
+              str       rd
+              inc       rd
+              ghi       r8
+              str       rd
+              inc       rd
+              glo       r7
+              str       rd
+              inc       rd
+              ghi       r7
+              str       rd
+              sep       sret           ; return to caller
+
+
+; ******************************************************
+; ***** acos                                       *****
+; ***** RF - Pointer to floating point number x    *****
+; ***** RC - Pointer to floating point number y    *****
+; ***** RD - Pointer to floating point destination *****
+; ***** internal:                                  *****
+; *****       R2+1     - n                         *****
+; *****       R2+5     - sign                      *****
+; *****       R2+6     - tmp                       *****
+; ******************************************************
+fpacos:       sep       scall          ; check for 0 argument
+              dw        iszero
+              lbdf      fpzero         ; return 0
+              push      rd             ; save destination
+              stxd                     ; make space for tmp
+              stxd
+              stxd
+              stxd
+              inc       rf             ; point to sign of argument
+              inc       rf
+              inc       rf
+              ldn       rf             ; retrieve it
+              dec       rf             ; move pointer back
+              dec       rf
+              dec       rf
+              ani       080h           ; keep only sign bit
+              stxd                     ; sign = sign bit
+              mov       rd,rf          ; n = argument
+              sep       scall
+              dw        addtows
+              sep       scall          ; n = n * n
+              dw        getargs
+              db        1,1
+              sep       scall
+              dw        fpmul
+              glo       r2             ; tmp = 1.0
+              adi       6
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_1
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp = tmp - n;
+              dw        getargs
+              db        6,1
+              sep       scall
+              dw        fpsub
+              sep       scall          ; tmp = tmp / n
+              dw        getargs
+              db        6,1
+              sep       scall
+              dw        fpdiv
+              sep       scall          ; n = sqrt(tmp)
+              dw        getargs
+              db        6,1
+              sep       scall
+              dw        fpsqrt
+              sep       scall          ; n = atan(n)
+              dw        getargs
+              db        1,1
+              sep       scall
+              dw        fpatan
+
+              glo       r2             ; point to sign
+              adi       5
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              ldn       rf             ; get sign
+              lbz       fpacos_dn      ; jump of argument was positive
+              glo       r2             ; tmp = pi
+              adi       6    
+              plo       rf
+              ghi       r2
+              adci      0
+              phi       rf
+              mov       rd,fp_pi
+              sep       scall
+              dw        fpcopy
+              sep       scall          ; tmp = tmp - n
+              dw        getargs
+              db        6,1
+              sep       scall
+              dw        fpsub
+              sep       scall          ; n = tmp
+              dw        getargs
+              db        1,6
+              sep       scall
+              dw        fpcopy
+fpacos_dn:    irx                      ; recover answer
+              ldxa
+              plo       r8
+              ldxa
+              phi       r8
+              ldxa
+              plo       r7
+              ldxa
+              phi       r7
+fpacos_dn1:   irx                      ; clean workspace off stack
+              irx
+              irx
+              irx
+              pop       rd             ; recover destination
+              glo       r8             ; store answer
+              str       rd
+              inc       rd
+              ghi       r8
+              str       rd
+              inc       rd
+              glo       r7
+              str       rd
+              inc       rd
+              ghi       r7
+              str       rd
+              sep       sret           ; return to caller
+
